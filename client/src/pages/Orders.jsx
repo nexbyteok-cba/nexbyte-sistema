@@ -9,9 +9,14 @@ import {
   Phone,
   Clock,
   Calendar,
+  Trash2,
+  Ban,
+  AlertTriangle,
+  X,
 } from 'lucide-react';
 import { api } from '../api/client';
 import { StatusBadge } from '../components/StatusBadge';
+import { Modal } from '../components/Modal';
 
 export function Orders() {
   const [orders, setOrders] = useState([]);
@@ -22,6 +27,12 @@ export function Orders() {
   const statusParam = searchParams.get('status') || '';
   const [selectedStatus, setSelectedStatus] = useState(statusParam);
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Estados para modales de cancelación y eliminación
+  const [orderToCancel, setOrderToCancel] = useState(null);
+  const [cancelReason, setCancelReason] = useState('');
+  const [orderToDelete, setOrderToDelete] = useState(null);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const statuses = [
     { code: '', label: 'Todos los estados' },
@@ -68,6 +79,41 @@ export function Orders() {
     }
   };
 
+  // Confirmar cancelación de orden
+  const handleConfirmCancel = async (e) => {
+    e.preventDefault();
+    if (!orderToCancel) return;
+    try {
+      setIsProcessing(true);
+      await api.patch(`/orders/${orderToCancel.id}/status`, {
+        status: 'cancelado',
+        notes: cancelReason || 'Orden cancelada por el usuario.',
+      });
+      setOrderToCancel(null);
+      setCancelReason('');
+      await loadOrders();
+    } catch (err) {
+      alert(err.message || 'Error al cancelar la orden.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Confirmar eliminación definitiva de orden
+  const handleConfirmDelete = async () => {
+    if (!orderToDelete) return;
+    try {
+      setIsProcessing(true);
+      await api.delete(`/orders/${orderToDelete.id}`);
+      setOrderToDelete(null);
+      await loadOrders();
+    } catch (err) {
+      alert(err.message || 'Error al eliminar la orden.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -78,14 +124,14 @@ export function Orders() {
             <span>Órdenes de <span className="text-nexcyan">Trabajo</span></span>
           </h1>
           <p className="text-xs text-nexgray mt-0.5">
-            Trazabilidad integral desde el ingreso hasta la entrega final del equipo
+            Trazabilidad integral, administración, cancelación y depuración de órdenes
           </p>
         </div>
 
         <div className="mt-3 sm:mt-0 flex items-center space-x-3">
           <button
             onClick={() => navigate('/recepcion')}
-            className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-nexblue to-nexcyan hover:opacity-90 font-bold text-black text-xs uppercase tracking-wider rounded shadow-lumia-accent transition-all"
+            className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-nexblue to-nexcyan hover:opacity-90 font-bold text-black text-xs uppercase tracking-wider rounded shadow-lumia-accent transition-all cursor-pointer"
           >
             <PlusCircle className="w-4 h-4" />
             <span>Nueva Recepción</span>
@@ -111,7 +157,7 @@ export function Orders() {
           <select
             value={selectedStatus}
             onChange={(e) => handleStatusFilterChange(e.target.value)}
-            className="bg-nexblack border border-nexblack-border rounded px-3 py-2 text-xs text-white focus:outline-none focus:border-nexcyan"
+            className="bg-nexblack border border-nexblack-border rounded px-3 py-2 text-xs text-white focus:outline-none focus:border-nexcyan font-bold"
           >
             {statuses.map((s) => (
               <option key={s.code} value={s.code}>{s.label}</option>
@@ -139,7 +185,7 @@ export function Orders() {
                   <th className="py-3 px-4">Estado</th>
                   <th className="py-3 px-4">Plazo / Fechas</th>
                   <th className="py-3 px-4 text-right">Importe / Saldo</th>
-                  <th className="py-3 px-4 text-right">Acción</th>
+                  <th className="py-3 px-4 text-center">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-nexblack-border/60 text-nexgray-light">
@@ -178,14 +224,40 @@ export function Orders() {
                         <span className="text-[10px] text-emerald-400 font-bold block">Saldado</span>
                       )}
                     </td>
-                    <td className="py-3 px-4 text-right">
-                      <button
-                        onClick={() => navigate(`/ordenes/${o.id}`)}
-                        className="px-3 py-1.5 rounded bg-nexblack hover:bg-nexcyan/20 hover:text-nexcyan text-nexgray border border-nexblack-border font-bold flex items-center space-x-1 ml-auto transition-colors"
-                      >
-                        <Eye className="w-3.5 h-3.5" />
-                        <span>Detalle</span>
-                      </button>
+                    <td className="py-3 px-4 text-center">
+                      <div className="flex items-center justify-center space-x-1.5">
+                        {/* Ver Detalle */}
+                        <button
+                          onClick={() => navigate(`/ordenes/${o.id}`)}
+                          className="p-1.5 rounded bg-nexblack hover:bg-nexcyan/20 hover:text-nexcyan text-nexgray border border-nexblack-border transition-colors cursor-pointer"
+                          title="Ver detalle completo"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                        </button>
+
+                        {/* Cancelar Orden (si no está ya cancelada ni entregada) */}
+                        {o.current_status !== 'cancelado' && o.current_status !== 'entregado' && (
+                          <button
+                            onClick={() => {
+                              setOrderToCancel(o);
+                              setCancelReason('');
+                            }}
+                            className="p-1.5 rounded bg-nexblack hover:bg-amber-500/20 hover:text-amber-400 text-nexgray border border-nexblack-border transition-colors cursor-pointer"
+                            title="Cancelar orden"
+                          >
+                            <Ban className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+
+                        {/* Eliminar Definitivamente */}
+                        <button
+                          onClick={() => setOrderToDelete(o)}
+                          className="p-1.5 rounded bg-nexblack hover:bg-red-500/20 hover:text-red-400 text-nexgray border border-nexblack-border transition-colors cursor-pointer"
+                          title="Eliminar orden definitivamente"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -194,6 +266,99 @@ export function Orders() {
           </div>
         )}
       </div>
+
+      {/* MODAL CANCELAR ORDEN */}
+      {orderToCancel && (
+        <Modal
+          isOpen={!!orderToCancel}
+          onClose={() => setOrderToCancel(null)}
+          title={`Cancelar Orden ${orderToCancel.order_number}`}
+        >
+          <form onSubmit={handleConfirmCancel} className="space-y-4">
+            <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded flex items-start space-x-3">
+              <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+              <div className="text-xs text-amber-200">
+                <span className="font-bold block">¿Confirmás la cancelación de esta orden?</span>
+                La orden quedará marcada como <strong>CANCELADA</strong> y figurará en el historial del cliente y del taller.
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-nexgray uppercase mb-1">
+                Motivo de la cancelación *
+              </label>
+              <textarea
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                placeholder="Ej: Cliente desiste por presupuesto, cargada por error de carga, duplicada..."
+                required
+                rows={3}
+                className="w-full bg-nexblack border border-nexblack-border rounded p-2 text-xs text-white focus:outline-none focus:border-amber-400"
+              />
+            </div>
+
+            <div className="flex justify-end space-x-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setOrderToCancel(null)}
+                className="px-3 py-1.5 rounded bg-nexblack hover:bg-white/10 text-xs text-nexgray"
+              >
+                Volver
+              </button>
+              <button
+                type="submit"
+                disabled={isProcessing}
+                className="px-4 py-1.5 rounded bg-amber-600 hover:bg-amber-500 text-black font-bold text-xs uppercase"
+              >
+                {isProcessing ? 'Cancelando...' : 'Confirmar Cancelación'}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* MODAL ELIMINAR ORDEN DEFINITIVAMENTE */}
+      {orderToDelete && (
+        <Modal
+          isOpen={!!orderToDelete}
+          onClose={() => setOrderToDelete(null)}
+          title={`Eliminar Orden ${orderToDelete.order_number}`}
+        >
+          <div className="space-y-4">
+            <div className="p-3 bg-red-500/15 border border-red-500/40 rounded flex items-start space-x-3">
+              <Trash2 className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+              <div className="text-xs text-red-200">
+                <span className="font-bold block text-red-300">¡Acción destructiva irreversible!</span>
+                Estás a punto de <strong>eliminar definitivamente</strong> la orden de trabajo{' '}
+                <span className="font-mono font-bold text-white">{orderToDelete.order_number}</span> de la base de datos.
+                <ul className="list-disc list-inside mt-2 space-y-1 text-white/80">
+                  <li>Se borrarán fotografías, firmas y diagnóstico técnico.</li>
+                  <li>Si había repuestos asignados, el stock regresará al inventario.</li>
+                  <li>Se eliminarán los registros para dejar limpio el sistema.</li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setOrderToDelete(null)}
+                className="px-3 py-1.5 rounded bg-nexblack hover:bg-white/10 text-xs text-nexgray cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={isProcessing}
+                className="px-4 py-1.5 rounded bg-red-600 hover:bg-red-500 text-white font-bold text-xs uppercase tracking-wider cursor-pointer"
+              >
+                {isProcessing ? 'Eliminando...' : 'Sí, Eliminar Definitivamente'}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

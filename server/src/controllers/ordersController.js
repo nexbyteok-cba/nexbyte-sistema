@@ -449,3 +449,82 @@ export async function processDelivery(req, res) {
     return res.status(500).json({ error: 'Error al registrar la entrega del equipo.' });
   }
 }
+
+export async function deleteOrder(req, res) {
+  try {
+    const { id } = req.params;
+    const order = await queryOne('SELECT * FROM service_orders WHERE id = ?', [id]);
+    if (!order) {
+      return res.status(404).json({ error: 'Orden no encontrada.' });
+    }
+
+    const orderId = order.id;
+    const equipmentId = order.equipment_id;
+
+    // 1. Si había repuestos descontados, devolver el stock al inventario
+    const parts = await query('SELECT item_id, quantity FROM order_parts WHERE order_id = ?', [orderId]);
+    for (const part of parts) {
+      if (part.item_id && part.quantity > 0) {
+        await execute(
+          'UPDATE inventory_items SET quantity = quantity + ?, updated_at = ? WHERE id = ?',
+          [part.quantity, new Date().toISOString(), part.item_id]
+        );
+      }
+    }
+
+    // 2. Eliminar movimientos financieros y de caja vinculados a esta orden o sus pagos
+    const payments = await query('SELECT id FROM payments WHERE order_id = ?', [orderId]);
+    for (const p of payments) {
+      await execute('DELETE FROM cash_movements WHERE payment_id = ?', [p.id]);
+    }
+    await execute('DELETE FROM financial_movements WHERE order_id = ?', [orderId]);
+    await execute('DELETE FROM payments WHERE order_id = ?', [orderId]);
+
+    // 3. Desvincular o eliminar citas
+    await execute('DELETE FROM appointments WHERE order_id = ?', [orderId]);
+
+    // 4. Eliminar todas las tablas hijas asociadas
+    await execute('DELETE FROM order_services WHERE order_id = ?', [orderId]);
+    await execute('DELETE FROM order_accessories WHERE order_id = ?', [orderId]);
+    await execute('DELETE FROM order_conditions WHERE order_id = ?', [orderId]);
+    await execute('DELETE FROM order_photos WHERE order_id = ?', [orderId]);
+    await execute('DELETE FROM order_signatures WHERE order_id = ?', [orderId]);
+    await execute('DELETE FROM order_consents WHERE order_id = ?', [orderId]);
+    await execute('DELETE FROM order_status_history WHERE order_id = ?', [orderId]);
+    await execute('DELETE FROM technical_diagnostics WHERE order_id = ?', [orderId]);
+    await execute('DELETE FROM repair_authorizations WHERE order_id = ?', [orderId]);
+    await execute('DELETE FROM order_parts WHERE order_id = ?', [orderId]);
+
+    // 5. Eliminar la orden principal
+    await execute('DELETE FROM service_orders WHERE id = ?', [orderId]);
+
+    // 6. Si el equipo no tiene ninguna otra orden de servicio, eliminar el equipo para mantener limpia la DB
+    if (equipmentId) {
+      const remainingOrders = await queryOne('SELECT COUNT(*) as count FROM service_orders WHERE equipment_id = ?', [equipmentId]);
+      if (!remainingOrders || remainingOrders.count === 0) {
+        await execute('DELETE FROM equipment WHERE id = ?', [equipmentId]);
+      }
+    }
+
+    // 7. Registrar auditoría
+    await logAudit({
+      userId: req.user.id,
+      action: 'DELETE_ORDER',
+      entityType: 'service_orders',
+      entityId: orderId,
+      oldValues: {
+        order_number: order.order_number,
+        client_id: order.client_id,
+        equipment_id: equipmentId,
+        total_amount: order.total_amount,
+      },
+      req,
+    });
+
+    return res.json({ message: `Orden ${order.order_number} eliminada definitivamente del sistema.` });
+  } catch (err) {
+    console.error('Error al eliminar orden:', err);
+    return res.status(500).json({ error: 'Error al eliminar la orden de trabajo.' });
+  }
+}
+

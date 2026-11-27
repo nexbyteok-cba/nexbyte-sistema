@@ -203,12 +203,51 @@ export async function updateClient(req, res) {
 export async function deleteClient(req, res) {
   try {
     const { id } = req.params;
+    const { hard } = req.query;
     const current = await queryOne('SELECT * FROM clients WHERE id = ?', [id]);
     if (!current) {
       return res.status(404).json({ error: 'Cliente no encontrado.' });
     }
 
-    // Baja lógica para preservar integridad histórica de órdenes
+    const orderCount = await queryOne('SELECT COUNT(*) as count FROM service_orders WHERE client_id = ?', [id]);
+
+    if (hard === 'true' || orderCount?.count === 0) {
+      // Eliminar citas, equipos y órdenes asociadas si se pide hard delete o si fue cargado sin órdenes
+      if (orderCount?.count > 0) {
+        const orders = await query('SELECT id FROM service_orders WHERE client_id = ?', [id]);
+        for (const ord of orders) {
+          await execute('DELETE FROM order_services WHERE order_id = ?', [ord.id]);
+          await execute('DELETE FROM order_accessories WHERE order_id = ?', [ord.id]);
+          await execute('DELETE FROM order_conditions WHERE order_id = ?', [ord.id]);
+          await execute('DELETE FROM order_photos WHERE order_id = ?', [ord.id]);
+          await execute('DELETE FROM order_signatures WHERE order_id = ?', [ord.id]);
+          await execute('DELETE FROM order_consents WHERE order_id = ?', [ord.id]);
+          await execute('DELETE FROM order_status_history WHERE order_id = ?', [ord.id]);
+          await execute('DELETE FROM technical_diagnostics WHERE order_id = ?', [ord.id]);
+          await execute('DELETE FROM repair_authorizations WHERE order_id = ?', [ord.id]);
+          await execute('DELETE FROM order_parts WHERE order_id = ?', [ord.id]);
+          await execute('DELETE FROM payments WHERE order_id = ?', [ord.id]);
+          await execute('DELETE FROM service_orders WHERE id = ?', [ord.id]);
+        }
+      }
+
+      await execute('DELETE FROM appointments WHERE client_id = ?', [id]);
+      await execute('DELETE FROM equipment WHERE client_id = ?', [id]);
+      await execute('DELETE FROM clients WHERE id = ?', [id]);
+
+      await logAudit({
+        userId: req.user.id,
+        action: 'HARD_DELETE_CLIENT',
+        entityType: 'clients',
+        entityId: id,
+        oldValues: current,
+        req,
+      });
+
+      return res.json({ message: 'Cliente eliminado definitivamente del sistema.' });
+    }
+
+    // Baja lógica si tiene órdenes y no se solicitó forzar
     const now = new Date().toISOString();
     await execute('UPDATE clients SET is_active = 0, updated_at = ? WHERE id = ?', [now, id]);
 

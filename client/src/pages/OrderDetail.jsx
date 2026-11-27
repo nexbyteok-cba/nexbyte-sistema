@@ -17,6 +17,8 @@ import {
   Plus,
   Send,
   Eye,
+  Trash2,
+  Ban,
 } from 'lucide-react';
 import { api } from '../api/client';
 import { StatusBadge } from '../components/StatusBadge';
@@ -37,6 +39,10 @@ export function OrderDetail() {
   const [isPaymentOpen, setIsPaymentOpen] = useState(false);
   const [isDeliveryOpen, setIsDeliveryOpen] = useState(false);
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
+  const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isProcessingAction, setIsProcessingAction] = useState(false);
 
   // Catálogo de inventario para repuestos
   const [inventoryItems, setInventoryItems] = useState([]);
@@ -209,6 +215,38 @@ export function OrderDetail() {
     }
   };
 
+  const handleConfirmCancelOrder = async (e) => {
+    e.preventDefault();
+    setActionError('');
+    try {
+      setIsProcessingAction(true);
+      await api.patch(`/orders/${id}/status`, {
+        status: 'cancelado',
+        notes: cancelReason || 'Orden cancelada desde el detalle técnico.',
+      });
+      setIsCancelModalOpen(false);
+      setCancelReason('');
+      loadOrderDetail();
+    } catch (err) {
+      setActionError(err.message || 'Error al cancelar la orden.');
+    } finally {
+      setIsProcessingAction(false);
+    }
+  };
+
+  const handleConfirmDeleteOrder = async () => {
+    setActionError('');
+    try {
+      setIsProcessingAction(true);
+      await api.delete(`/orders/${id}`);
+      setIsDeleteModalOpen(false);
+      navigate('/ordenes');
+    } catch (err) {
+      setActionError(err.message || 'Error al eliminar la orden.');
+      setIsProcessingAction(false);
+    }
+  };
+
   if (loading) {
     return <div className="py-12 text-center text-xs text-nexgray">Cargando orden...</div>;
   }
@@ -241,23 +279,47 @@ export function OrderDetail() {
           </div>
         </div>
 
-        <div className="flex items-center space-x-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => setIsReceiptModalOpen(true)}
-            className="flex items-center space-x-1.5 px-3 py-1.5 rounded bg-nexblack-card hover:bg-nexblack-border border border-nexblack-border text-xs font-bold text-white uppercase"
+            className="flex items-center space-x-1.5 px-3 py-1.5 rounded bg-nexblack-card hover:bg-nexblack-border border border-nexblack-border text-xs font-bold text-white uppercase cursor-pointer"
           >
             <Printer className="w-3.5 h-3.5 text-nexcyan" />
             <span>Comprobante</span>
           </button>
+
+          {order.current_status !== 'cancelado' && order.current_status !== 'entregado' && (
+            <button
+              onClick={() => {
+                setIsCancelModalOpen(true);
+                setCancelReason('');
+              }}
+              className="flex items-center space-x-1.5 px-3 py-1.5 rounded bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/40 text-amber-300 text-xs font-bold uppercase cursor-pointer"
+              title="Cancelar esta orden"
+            >
+              <Ban className="w-3.5 h-3.5 text-amber-400" />
+              <span>Cancelar</span>
+            </button>
+          )}
+
           {order.current_status !== 'entregado' && (
             <button
               onClick={() => setIsDeliveryOpen(true)}
-              className="flex items-center space-x-1.5 px-4 py-1.5 rounded bg-gradient-to-r from-emerald-500 to-teal-400 hover:opacity-90 text-black text-xs font-black uppercase tracking-wider"
+              className="flex items-center space-x-1.5 px-4 py-1.5 rounded bg-gradient-to-r from-emerald-500 to-teal-400 hover:opacity-90 text-black text-xs font-black uppercase tracking-wider cursor-pointer"
             >
               <CheckCircle className="w-3.5 h-3.5" />
               <span>Entregar Equipo</span>
             </button>
           )}
+
+          <button
+            onClick={() => setIsDeleteModalOpen(true)}
+            className="flex items-center space-x-1 px-3 py-1.5 rounded bg-red-500/10 hover:bg-red-500/20 border border-red-500/40 text-red-400 text-xs font-bold uppercase cursor-pointer"
+            title="Eliminar orden definitivamente de la base de datos"
+          >
+            <Trash2 className="w-3.5 h-3.5 text-red-400" />
+            <span>Eliminar</span>
+          </button>
         </div>
       </div>
 
@@ -844,6 +906,99 @@ export function OrderDetail() {
           }}
         />
       </Modal>
+
+      {/* Modal Cancelar Orden */}
+      {isCancelModalOpen && (
+        <Modal
+          isOpen={isCancelModalOpen}
+          onClose={() => setIsCancelModalOpen(false)}
+          title={`Cancelar Orden ${order.order_number}`}
+        >
+          <form onSubmit={handleConfirmCancelOrder} className="space-y-4">
+            <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded flex items-start space-x-3">
+              <Ban className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+              <div className="text-xs text-amber-200">
+                <span className="font-bold block">¿Confirmás la cancelación de esta orden de trabajo?</span>
+                La orden pasará al estado <strong>CANCELADO</strong> y quedará registrada en el historial.
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-nexgray uppercase mb-1">
+                Motivo de la cancelación *
+              </label>
+              <textarea
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                placeholder="Ej: Cliente cancela reparación, presupuesto no aprobado, error de recepción..."
+                required
+                rows={3}
+                className="w-full bg-nexblack border border-nexblack-border rounded p-2 text-xs text-white focus:outline-none focus:border-amber-400"
+              />
+            </div>
+
+            <div className="flex justify-end space-x-2 pt-2 border-t border-nexblack-border">
+              <button
+                type="button"
+                onClick={() => setIsCancelModalOpen(false)}
+                className="px-3 py-1.5 rounded bg-nexblack hover:bg-white/10 text-xs text-nexgray"
+              >
+                Volver
+              </button>
+              <button
+                type="submit"
+                disabled={isProcessingAction}
+                className="px-4 py-1.5 rounded bg-amber-600 hover:bg-amber-500 text-black font-bold text-xs uppercase"
+              >
+                {isProcessingAction ? 'Cancelando...' : 'Confirmar Cancelación'}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* Modal Eliminar Orden Definitivamente */}
+      {isDeleteModalOpen && (
+        <Modal
+          isOpen={isDeleteModalOpen}
+          onClose={() => setIsDeleteModalOpen(false)}
+          title={`Eliminar Orden ${order.order_number}`}
+        >
+          <div className="space-y-4">
+            <div className="p-3 bg-red-500/15 border border-red-500/40 rounded flex items-start space-x-3">
+              <Trash2 className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+              <div className="text-xs text-red-200">
+                <span className="font-bold block text-red-300">¡Acción destructiva permanente!</span>
+                Estás a punto de borrar definitivamente la orden{' '}
+                <span className="font-mono font-bold text-white">{order.order_number}</span> de la base de datos.
+                <ul className="list-disc list-inside mt-2 space-y-1 text-white/80">
+                  <li>Se borrarán los servicios, fotografías, firmas y diagnóstico técnico.</li>
+                  <li>Si había repuestos asignados, el stock regresará al inventario.</li>
+                  <li>Esta acción es útil si cargaste la orden por error o para pruebas.</li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-2 pt-2 border-t border-nexblack-border">
+              <button
+                type="button"
+                onClick={() => setIsDeleteModalOpen(false)}
+                className="px-3 py-1.5 rounded bg-nexblack hover:bg-white/10 text-xs text-nexgray cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeleteOrder}
+                disabled={isProcessingAction}
+                className="px-4 py-1.5 rounded bg-red-600 hover:bg-red-500 text-white font-bold text-xs uppercase tracking-wider cursor-pointer"
+              >
+                {isProcessingAction ? 'Eliminando...' : 'Sí, Eliminar Definitivamente'}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

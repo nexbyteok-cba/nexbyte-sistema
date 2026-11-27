@@ -40,6 +40,9 @@ export function Clients() {
     notes: '',
   });
 
+  const [clientToDelete, setClientToDelete] = useState(null);
+  const [isDeletingClient, setIsDeletingClient] = useState(false);
+
   useEffect(() => {
     loadClients();
   }, [search]);
@@ -114,14 +117,21 @@ export function Clients() {
     }
   };
 
-  const handleDelete = async (client) => {
-    if (confirm(`¿Confirma dar de baja al cliente ${client.first_name} ${client.last_name}? Sus órdenes históricas permanecerán intactas.`)) {
-      try {
-        await api.delete(`/clients/${client.id}`);
-        loadClients();
-      } catch (err) {
-        alert(err.message || 'Error al dar de baja al cliente.');
-      }
+  const handleDeleteClick = (client) => {
+    setClientToDelete(client);
+  };
+
+  const handleConfirmDeleteClient = async (hard = false) => {
+    if (!clientToDelete) return;
+    try {
+      setIsDeletingClient(true);
+      await api.delete(`/clients/${clientToDelete.id}${hard ? '?hard=true' : ''}`);
+      setClientToDelete(null);
+      await loadClients();
+    } catch (err) {
+      alert(err.message || 'Error al eliminar cliente.');
+    } finally {
+      setIsDeletingClient(false);
     }
   };
 
@@ -229,9 +239,9 @@ export function Clients() {
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
                         <button
-                          onClick={() => handleDelete(c)}
-                          title="Dar de baja"
-                          className="p-1.5 rounded bg-nexblack hover:bg-red-500/20 hover:text-red-400 text-nexgray border border-nexblack-border transition-colors"
+                          onClick={() => handleDeleteClick(c)}
+                          title="Eliminar o dar de baja"
+                          className="p-1.5 rounded bg-nexblack hover:bg-red-500/20 hover:text-red-400 text-nexgray border border-nexblack-border transition-colors cursor-pointer"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -446,6 +456,60 @@ export function Clients() {
           </div>
         )}
       </Modal>
+
+      {/* Modal Eliminar / Desactivar Cliente */}
+      {clientToDelete && (
+        <Modal
+          isOpen={!!clientToDelete}
+          onClose={() => setClientToDelete(null)}
+          title={`Gestionar Cliente: ${clientToDelete.first_name} ${clientToDelete.last_name}`}
+        >
+          <div className="space-y-4">
+            <div className="p-3 bg-red-500/15 border border-red-500/40 rounded flex items-start space-x-3">
+              <Trash2 className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+              <div className="text-xs text-red-200">
+                <span className="font-bold block text-white text-sm mb-1">
+                  {clientToDelete.first_name} {clientToDelete.last_name}
+                </span>
+                <span className="font-mono text-white/80 block mb-2">
+                  Tel: {clientToDelete.phone} {clientToDelete.email ? `• ${clientToDelete.email}` : ''}
+                </span>
+                <p>
+                  Si cargaste este cliente por error o deseas limpiar el sistema, podés <strong>eliminarlo definitivamente</strong> de la base de datos.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row justify-end gap-2 pt-2 border-t border-nexblack-border">
+              <button
+                type="button"
+                onClick={() => setClientToDelete(null)}
+                className="px-3 py-2 rounded bg-nexblack hover:bg-white/10 text-xs text-nexgray cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => handleConfirmDeleteClient(false)}
+                disabled={isDeletingClient}
+                className="px-3 py-2 rounded bg-nexblack hover:bg-white/15 border border-white/20 text-xs text-white cursor-pointer"
+                title="Ocultar de la lista manteniendo órdenes existentes"
+              >
+                Desactivar (Baja Lógica)
+              </button>
+              <button
+                type="button"
+                onClick={() => handleConfirmDeleteClient(true)}
+                disabled={isDeletingClient}
+                className="px-4 py-2 rounded bg-red-600 hover:bg-red-500 text-white font-bold text-xs uppercase tracking-wider cursor-pointer"
+                title="Borrar completamente el cliente de la base de datos"
+              >
+                {isDeletingClient ? 'Eliminando...' : 'Eliminar Definitivamente'}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
