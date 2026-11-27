@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   FileText,
   Monitor,
@@ -24,6 +24,7 @@ import { ReceiptPDF } from '../components/ReceiptPDF';
 
 export function Reception() {
   const navigate = useNavigate();
+  const location = useLocation();
 
   // Settings & Catalogs
   const [nextOrderNumber, setNextOrderNumber] = useState('NB-2026-00001');
@@ -115,6 +116,34 @@ export function Reception() {
     const dateObj = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
     setCalculatedCompletionDate(dateObj.toISOString().split('T')[0]);
   }, [estimatedDays]);
+
+  useEffect(() => {
+    if (location.state) {
+      const { clientName, clientPhone, equipmentType, brand: sBrand, model: sModel, notes: sNotes } = location.state;
+      if (clientName || clientPhone) {
+        setClientMode('new');
+        const [first = '', ...rest] = (clientName || '').split(' ');
+        setClientData((prev) => ({
+          ...prev,
+          first_name: first,
+          last_name: rest.join(' '),
+          phone: clientPhone || '',
+        }));
+      }
+      if (sModel) setModel(sModel);
+      if (sBrand) {
+        setBrand(sBrand);
+        setCustomBrand(sBrand);
+      }
+      if (sNotes) setEquipmentNotes(sNotes);
+      if (equipmentType) {
+        const lower = equipmentType.toLowerCase();
+        if (lower.includes('pc') || lower.includes('escritorio')) setSelectedType('pc_escritorio');
+        else if (lower.includes('consola')) setSelectedType('consola');
+        else setSelectedType('notebook');
+      }
+    }
+  }, [location.state]);
 
   async function loadInitialData() {
     try {
