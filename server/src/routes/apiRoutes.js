@@ -14,6 +14,11 @@ import { authenticateToken, requirePasswordChanged } from '../middlewares/auth.j
 
 const router = Router();
 
+// Health check para Render y monitoreo
+router.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
 // Rutas públicas de autenticación
 router.use('/auth', authRoutes);
 

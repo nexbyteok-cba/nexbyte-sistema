@@ -1,11 +1,11 @@
 services:
   - type: web
-    name: nexbyte-manager
+    name: nexbyte-sistema
     env: node
     plan: starter
     buildCommand: npm --prefix client install && npm --prefix client run build && npm --prefix server install
     startCommand: npm --prefix server run start
-    healthCheckPath: /api/auth/me
+    healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
         value: production
@@ -24,7 +24,7 @@ services:
       - key: ADMIN_EMAIL
         value: nexbyte.ok@gmail.com
       - key: ADMIN_INITIAL_PASSWORD
-        sync: false
+        value: Nexbyte2026!Admin
       - key: CLOUDINARY_CLOUD_NAME
         sync: false
       - key: CLOUDINARY_API_KEY
