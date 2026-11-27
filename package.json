@@ -1,0 +1,14 @@
+{
+  "name": "nexbyte-sistema",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server/src/index.js",
+    "server": "node server/src/index.js",
+    "client": "npm --prefix client run dev",
+    "build": "npm --prefix client run build",
+    "dev": "npm --prefix client run dev",
+    "seed": "npm --prefix server run seed"
+  }
+}
