@@ -3,7 +3,7 @@ services:
     name: nexbyte-sistema
     env: node
     plan: starter
-    buildCommand: npm --prefix client install && npm --prefix client run build && npm --prefix server install
+    buildCommand: npm --prefix client install --include=dev && npm --prefix client run build && npm --prefix server install
     startCommand: npm --prefix server run start
     healthCheckPath: /api/health
     envVars:
